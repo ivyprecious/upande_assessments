@@ -1,0 +1,176 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ title or "Assessment" }}{% endblock %}
+
+{% block head_include %}
+<style>
+	body { background: #f4f5f6; }
+	.asmt-wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+	.asmt-card {
+		background: #fff; border-radius: 12px; padding: 28px 24px;
+		box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 18px;
+	}
+	.asmt-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+	.asmt-sub { color: #6c757d; margin: 0; font-size: 14px; }
+	.asmt-q { font-weight: 600; margin: 0 0 14px; line-height: 1.4; }
+	.asmt-q .num { color: #2490ef; margin-right: 6px; }
+	.asmt-opt {
+		display: flex; align-items: flex-start; gap: 10px;
+		border: 1px solid #e0e3e6; border-radius: 8px;
+		padding: 12px 14px; margin-bottom: 10px; cursor: pointer;
+		transition: border-color .12s, background .12s;
+	}
+	.asmt-opt:hover { border-color: #b9c0c7; }
+	.asmt-opt input { margin-top: 3px; flex: 0 0 auto; }
+	.asmt-opt.selected { border-color: #2490ef; background: #f0f8ff; }
+	.asmt-actions { position: sticky; bottom: 0; padding-top: 8px; }
+	.asmt-btn {
+		width: 100%; border: 0; border-radius: 8px; padding: 14px;
+		font-size: 16px; font-weight: 600; color: #fff; background: #2490ef;
+		cursor: pointer;
+	}
+	.asmt-btn:disabled { opacity: .6; cursor: not-allowed; }
+	.asmt-state { text-align: center; padding: 40px 16px; }
+	.asmt-state .icon { font-size: 44px; }
+	.asmt-state h2 { margin: 12px 0 6px; }
+	.asmt-state p { color: #6c757d; }
+	.asmt-progress { font-size: 13px; color: #6c757d; margin-top: 6px; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="asmt-wrap">
+
+	{% if state == "open" %}
+	<div class="asmt-card">
+		<h1 class="asmt-title">{{ title }}</h1>
+		<p class="asmt-sub">
+			{% if applicant_name %}{{ applicant_name }} — {% endif %}
+			Please answer every question, then submit. You can submit only once.
+		</p>
+	</div>
+
+	<form id="asmt-form">
+		{% for q in questions %}
+		<div class="asmt-card asmt-question" data-question="{{ q.name }}">
+			<p class="asmt-q"><span class="num">{{ loop.index }}.</span>{{ q.question_text }}</p>
+			{% for opt in q.options %}
+			<label class="asmt-opt">
+				<input type="radio" name="q-{{ q.name }}" value="{{ opt.name }}">
+				<span>{{ opt.option_text }}</span>
+			</label>
+			{% endfor %}
+		</div>
+		{% endfor %}
+
+		<div class="asmt-actions">
+			<button type="submit" class="asmt-btn" id="asmt-submit">Submit Assessment</button>
+			<div class="asmt-progress" id="asmt-progress"></div>
+		</div>
+	</form>
+
+	{% elif state == "completed" %}
+	<div class="asmt-card asmt-state">
+		<div class="icon">✓</div>
+		<h2>Response already recorded</h2>
+		<p>This assessment has already been submitted. Thank you.</p>
+	</div>
+
+	{% elif state == "expired" %}
+	<div class="asmt-card asmt-state">
+		<div class="icon">⏳</div>
+		<h2>This link has expired</h2>
+		<p>Please contact the hiring team for a fresh assessment link.</p>
+	</div>
+
+	{% else %}
+	<div class="asmt-card asmt-state">
+		<div class="icon">⚠️</div>
+		<h2>Invalid link</h2>
+		<p>{{ message or "This assessment link is not valid." }}</p>
+	</div>
+	{% endif %}
+
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+	var form = document.getElementById("asmt-form");
+	if (!form) return;
+
+	var token = {{ token | tojson }};
+	var csrf = {{ (csrf_token or "") | tojson }};
+	var submitBtn = document.getElementById("asmt-submit");
+	var progress = document.getElementById("asmt-progress");
+	var questions = Array.prototype.slice.call(document.querySelectorAll(".asmt-question"));
+
+	// Highlight the chosen option.
+	form.addEventListener("change", function (e) {
+		if (e.target.type !== "radio") return;
+		var card = e.target.closest(".asmt-question");
+		card.querySelectorAll(".asmt-opt").forEach(function (o) { o.classList.remove("selected"); });
+		e.target.closest(".asmt-opt").classList.add("selected");
+	});
+
+	form.addEventListener("submit", function (e) {
+		e.preventDefault();
+
+		var answers = [];
+		var unanswered = 0;
+		questions.forEach(function (card) {
+			var qn = card.getAttribute("data-question");
+			var checked = card.querySelector("input[type=radio]:checked");
+			if (checked) {
+				answers.push({ question: qn, option: checked.value });
+			} else {
+				unanswered++;
+			}
+		});
+
+		if (unanswered > 0) {
+			var ok = confirm(unanswered + " question(s) are unanswered. Submit anyway?");
+			if (!ok) return;
+		}
+
+		submitBtn.disabled = true;
+		progress.textContent = "Submitting...";
+
+		fetch("/api/method/upande_assessments.api.submit_assessment", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Frappe-CSRF-Token": csrf,
+			},
+			body: JSON.stringify({ token: token, answers: answers }),
+		})
+			.then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+			.then(function (res) {
+				if (res.ok && res.body.message && res.body.message.state === "submitted") {
+					renderDone();
+				} else {
+					var msg = (res.body && (res.body._server_messages || res.body.exc)) || "Submission failed.";
+					progress.textContent = "Could not submit. Please try again.";
+					submitBtn.disabled = false;
+				}
+			})
+			.catch(function () {
+				progress.textContent = "Network error. Please try again.";
+				submitBtn.disabled = false;
+			});
+	});
+
+	function renderDone() {
+		var wrap = document.querySelector(".asmt-wrap");
+		wrap.innerHTML =
+			'<div class="asmt-card asmt-state">' +
+			'<div class="icon">✓</div>' +
+			'<h2>Response recorded</h2>' +
+			'<p>Thank you for completing the assessment. You may close this page.</p>' +
+			"</div>";
+		window.scrollTo(0, 0);
+	}
+})();
+</script>
+{% endblock %}

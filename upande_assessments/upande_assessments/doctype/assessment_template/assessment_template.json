@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "autoname": "field:title",
+ "creation": "2026-06-17 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "assessment_type",
+  "is_active",
+  "column_break_main",
+  "designation",
+  "pass_percentage",
+  "action_on_fail"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Personality",
+   "fieldname": "assessment_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Assessment Type",
+   "options": "\nPersonality\nTechnical",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Is Active"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation"
+  },
+  {
+   "description": "Minimum percentage required to pass. Leave empty until decided.",
+   "fieldname": "pass_percentage",
+   "fieldtype": "Float",
+   "label": "Pass Mark (%)"
+  },
+  {
+   "default": "Flag for Review",
+   "description": "What to do when a response falls below the pass mark.",
+   "fieldname": "action_on_fail",
+   "fieldtype": "Select",
+   "label": "Action on Fail",
+   "options": "Flag for Review\nReject"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-17 15:48:36.594579",
+ "modified_by": "Administrator",
+ "module": "Upande Assessments",
+ "name": "Assessment Template",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "HR User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
