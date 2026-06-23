@@ -4,6 +4,7 @@
 # Guest-facing portal page for taking an assessment via a tokenised link.
 
 import frappe
+import frappe.sessions
 from upande_assessments.api import get_assessment
 
 no_cache = 1
@@ -41,6 +42,8 @@ def get_context(context):
 		context.applicant_name = data.get("applicant_name")
 		context.questions = data.get("questions")
 		# csrf token so the guest can POST back to submit_assessment.
-		context.csrf_token = frappe.session.csrf_token
+		# Use get_csrf_token(): it reads session.data.csrf_token and generates
+		# + persists one if absent. frappe.session.csrf_token is always None.
+		context.csrf_token = frappe.sessions.get_csrf_token()
 
 	return context
