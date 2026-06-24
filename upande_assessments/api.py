@@ -485,7 +485,6 @@ def submit_assessment(token, answers):
 	doc.save(ignore_permissions=True)
 
 	_update_applicant(response.job_applicant, result, percentage)
-	_notify_hr(doc)
 
 	frappe.db.commit()
 	return {"state": "submitted"}
@@ -517,37 +516,10 @@ def _update_applicant(applicant, result, percentage):
 	)
 
 
-def _notify_hr(doc):
-	recipients = _hr_recipients()
-	if not recipients:
-		return
-
-	applicant_name = frappe.db.get_value("Job Applicant", doc.job_applicant, "applicant_name")
-	subject = _("Assessment completed: {0} — {1}").format(applicant_name or doc.job_applicant, doc.result)
-	message = _(
-		"<p>{name} has completed the {atype} assessment.</p>"
-		"<p><b>Score:</b> {pct:.1f}% &nbsp; <b>Result:</b> {result}</p>"
-		"<p>Response: {ref}</p>"
-	).format(
-		name=applicant_name or doc.job_applicant,
-		atype=doc.assessment_type,
-		pct=doc.percentage or 0.0,
-		result=doc.result,
-		ref=doc.name,
-	)
-	frappe.sendmail(
-		recipients=recipients,
-		subject=subject,
-		message=message,
-		reference_doctype="Assessment Response",
-		reference_name=doc.name,
-	)
-
-
 def _hr_recipients():
 	users = frappe.get_all(
 		"Has Role",
-		filters={"role": "HR Manager", "parenttype": "User"},
+		filters={"role": "Group HR Manager", "parenttype": "User"},
 		pluck="parent",
 	)
 	emails = [
