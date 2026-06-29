@@ -13,14 +13,15 @@ import frappe
 from frappe import _
 from frappe.utils import (
 	add_days,
+	get_datetime,
 	get_url,
 	getdate,
 	now_datetime,
 	nowdate,
 )
 
-# How long a tokenised link stays valid. Kept here (not hardcoded in records)
-# so it is easy to tune; pass mark and content remain HR-configurable in Desk.
+# Fallback link lifetime, used only when a template has no expiry_days set.
+# The real value is now HR-configurable per template (Assessment Template.expiry_days).
 DEFAULT_EXPIRY_DAYS = 14
 
 ASSESSMENT_PAGE = "assessment"
@@ -81,6 +82,11 @@ def send_assessment(applicant, assessment_type="Personality", resend=0):
 			)
 		)
 
+	template_doc = frappe.get_cached_doc("Assessment Template", template)
+	# Deadline is driven by the template; fall back to the module default if HR
+	# has not set expiry_days on it yet.
+	expiry_days = template_doc.expiry_days or DEFAULT_EXPIRY_DAYS
+
 	# Block duplicates unless this is an explicit resend.
 	existing = frappe.db.get_value(
 		"Assessment Response",
@@ -112,7 +118,7 @@ def send_assessment(applicant, assessment_type="Personality", resend=0):
 			"token": frappe.generate_hash(length=32),
 			"status": "Sent",
 			"sent_on": now_datetime(),
-			"expiry_date": add_days(nowdate(), DEFAULT_EXPIRY_DAYS),
+			"expiry_date": add_days(nowdate(), expiry_days),
 		}
 	)
 	response.insert(ignore_permissions=True)
@@ -123,7 +129,7 @@ def send_assessment(applicant, assessment_type="Personality", resend=0):
 
 	emailed = False
 	if assessment_type == "Personality":
-		emailed = _email_invite(applicant_doc, response, link)
+		emailed = _email_invite(applicant_doc, response, link, template_doc)
 
 	frappe.db.commit()
 
@@ -309,15 +315,24 @@ def _assessment_link(token):
 	return get_url(f"/{ASSESSMENT_PAGE}?token={token}")
 
 
-def _email_invite(applicant_doc, response, link):
+def _email_invite(applicant_doc, response, link, template_doc):
 	recipient = applicant_doc.get("email_id")
 	if not recipient:
 		return False
 
+	# Instructions + time limit come from the one Template field so the email and
+	# the portal never drift. time_limit_minutes of 0/None means "no time limit".
+	time_limit = template_doc.get("time_limit_minutes")
 	args = {
 		"applicant_name": applicant_doc.get("applicant_name") or "Candidate",
 		"link": link,
 		"expiry_date": frappe.utils.formatdate(response.expiry_date),
+		"deadline": frappe.utils.formatdate(response.expiry_date),
+		"instructions": template_doc.get("instructions") or "",
+		"time_limit_minutes": time_limit or 0,
+		"time_limit_label": (
+			_("{0} minutes").format(time_limit) if time_limit else _("no time limit")
+		),
 	}
 
 	# Prefer an HR-editable Email Template if present; otherwise fall back to
@@ -344,8 +359,11 @@ def _email_invite(applicant_doc, response, link):
 _DEFAULT_INVITE_HTML = """
 <p>Dear {applicant_name},</p>
 <p>You have been invited to complete an assessment as part of your application.</p>
+{instructions}
+<p>⏱ Once you click Start you have <b>{time_limit_label}</b>. The assessment submits
+automatically when time runs out.</p>
 <p>Please use the link below. It is personal to you and can be submitted only once.
-The link is valid until <b>{expiry_date}</b>.</p>
+The link is valid until <b>{deadline}</b>.</p>
 <p><a href="{link}"
    style="display:inline-block;padding:10px 18px;background:#2490ef;color:#fff;
    border-radius:6px;text-decoration:none;">Start Assessment</a></p>
@@ -359,10 +377,14 @@ The link is valid until <b>{expiry_date}</b>.</p>
 # ---------------------------------------------------------------------------
 @frappe.whitelist(allow_guest=True)
 def get_assessment(token):
-	"""Return template + questions + options for rendering only.
+	"""Return the state needed to render the portal page.
 
-	Never returns score, is_best, max_score or anything revealing the right
-	answer. Raises a clean state for invalid / expired / completed tokens.
+	Before Start (no ``started_on``): returns ``state == "intro"`` with the
+	template instructions + time limit only — NO questions. After Start (a
+	refresh mid-assessment): returns ``state == "open"`` with questions and the
+	real remaining time, computed server-side from ``started_on`` so a refresh
+	resumes rather than resets. Never returns score, is_best, max_score or
+	anything revealing the right answer.
 	"""
 	response = _get_response_by_token(token)
 
@@ -375,43 +397,102 @@ def get_assessment(token):
 			frappe.db.commit()
 		return {"state": "expired"}
 
-	# First open flips Sent -> In Progress.
-	if response.status == "Sent":
-		frappe.db.set_value("Assessment Response", response.name, "status", "In Progress")
-		frappe.db.commit()
-
 	template = frappe.db.get_value(
 		"Assessment Template",
 		response.assessment_template,
-		["title", "assessment_type"],
+		["title", "assessment_type", "instructions", "time_limit_minutes"],
 		as_dict=True,
 	)
 
+	base = {
+		"title": template.title,
+		"assessment_type": template.assessment_type,
+		"instructions": template.instructions,
+		"time_limit_minutes": template.time_limit_minutes,
+		"applicant_name": frappe.db.get_value(
+			"Job Applicant", response.job_applicant, "applicant_name"
+		),
+	}
+
+	# Not started yet -> instructions / pre-start screen. Questions stay hidden
+	# until the candidate clicks Start (which calls start_assessment).
+	if not response.started_on:
+		return {"state": "intro", **base}
+
+	# Already started -> resume with the real remaining time.
+	base["questions"] = _load_questions(response.assessment_template)
+	base["remaining_seconds"] = _remaining_seconds(response, template.time_limit_minutes)
+	return {"state": "open", **base}
+
+
+@frappe.whitelist(allow_guest=True)
+def start_assessment(token):
+	"""Stamp ``started_on`` server-side and return the questions to render.
+
+	The countdown is seeded from time computed here, never from the browser.
+	Idempotent: a re-click or refresh-then-start never resets an existing
+	``started_on``.
+	"""
+	response = _get_response_by_token(token)
+
+	if response.status == "Completed":
+		return {"state": "completed"}
+
+	if _is_expired(response):
+		frappe.db.set_value("Assessment Response", response.name, "status", "Expired")
+		frappe.db.commit()
+		return {"state": "expired"}
+
+	# Stamp the start once. Do not trust the browser clock.
+	if not response.started_on:
+		frappe.db.set_value(
+			"Assessment Response",
+			response.name,
+			{"started_on": now_datetime(), "status": "In Progress"},
+		)
+		frappe.db.commit()
+		response.reload()
+
+	time_limit_minutes = frappe.db.get_value(
+		"Assessment Template", response.assessment_template, "time_limit_minutes"
+	)
+
+	return {
+		"state": "open",
+		"questions": _load_questions(response.assessment_template),
+		"time_limit_minutes": time_limit_minutes,
+		"remaining_seconds": _remaining_seconds(response, time_limit_minutes),
+	}
+
+
+def _load_questions(template_name):
+	"""Questions + options for rendering only — no score, no is_best, no red flag."""
 	questions = frappe.get_all(
 		"Assessment Question",
-		filters={"assessment_template": response.assessment_template},
+		filters={"assessment_template": template_name},
 		fields=["name", "question_text", "question_type", "sequence"],
 		order_by="sequence asc, creation asc",
 	)
-
 	for q in questions:
-		# Expose only the option row name + display text. No score, no is_best.
 		q["options"] = frappe.get_all(
 			"Assessment Option",
 			filters={"parent": q["name"], "parenttype": "Assessment Question"},
 			fields=["name", "option_text"],
 			order_by="idx asc",
 		)
+	return questions
 
-	return {
-		"state": "open",
-		"title": template.title,
-		"assessment_type": template.assessment_type,
-		"applicant_name": frappe.db.get_value(
-			"Job Applicant", response.job_applicant, "applicant_name"
-		),
-		"questions": questions,
-	}
+
+def _remaining_seconds(response, time_limit_minutes):
+	"""Whole seconds left from time_limit_minutes minus elapsed-since-started_on.
+
+	Returns ``None`` when no limit is configured (untimed assessment), and never
+	a negative number.
+	"""
+	if not time_limit_minutes or not response.started_on:
+		return None
+	elapsed = (now_datetime() - get_datetime(response.started_on)).total_seconds()
+	return max(0, int(time_limit_minutes * 60 - elapsed))
 
 
 # ---------------------------------------------------------------------------
@@ -444,15 +525,24 @@ def submit_assessment(token, answers):
 	)
 
 	doc = frappe.get_doc("Assessment Response", response.name)
+
+	# The server is the source of truth for time; the browser timer is UX only.
+	# Independently check elapsed-since-started_on against the limit. A late
+	# submission (even past the network grace) is still accepted — we simply
+	# score the answers that were given, which the loop below already does, so
+	# there is nothing to reject here. Logged for HR visibility when over.
+	_log_if_over_time(doc, template)
+
 	doc.set("answers", [])
 	total_score = 0.0
 	max_score = 0.0
+	any_red_flag = False
 
 	for q in questions:
 		options = frappe.get_all(
 			"Assessment Option",
 			filters={"parent": q["name"], "parenttype": "Assessment Question"},
-			fields=["name", "option_text", "score"],
+			fields=["name", "option_text", "score", "is_red_flag"],
 		)
 		if options:
 			max_score += max(o["score"] for o in options)
@@ -463,6 +553,10 @@ def submit_assessment(token, answers):
 		score_awarded = picked["score"] if picked else 0.0
 		total_score += score_awarded
 
+		picked_red_flag = bool(picked and picked["is_red_flag"])
+		if picked_red_flag:
+			any_red_flag = True
+
 		doc.append(
 			"answers",
 			{
@@ -470,16 +564,24 @@ def submit_assessment(token, answers):
 				"question_text": q["question_text"],
 				"selected_option_text": picked["option_text"] if picked else None,
 				"score_awarded": score_awarded,
+				# Snapshot so HR can see which answer tripped the flag.
+				"is_red_flag": 1 if picked_red_flag else 0,
 			},
 		)
 
 	percentage = (total_score / max_score * 100.0) if max_score else 0.0
 	result = _resolve_result(percentage, template)
 
+	# A red-flag option forces Review regardless of score. The numeric score is
+	# left untouched — only the verdict changes.
+	if any_red_flag:
+		result = "Review"
+
 	doc.total_score = total_score
 	doc.max_score = max_score
 	doc.percentage = percentage
 	doc.result = result
+	doc.flagged = 1 if any_red_flag else 0
 	doc.status = "Completed"
 	doc.completed_on = now_datetime()
 	doc.save(ignore_permissions=True)
@@ -488,6 +590,27 @@ def submit_assessment(token, answers):
 
 	frappe.db.commit()
 	return {"state": "submitted"}
+
+
+# Network slack allowed on top of the time limit before a submission counts as
+# "over time". The submission is accepted either way; this only affects logging.
+SUBMIT_GRACE_SECONDS = 45
+
+
+def _log_if_over_time(response, template):
+	"""Record (don't reject) submissions that arrive after the time limit."""
+	limit = template.get("time_limit_minutes")
+	if not limit or not response.started_on:
+		return
+	elapsed = (now_datetime() - get_datetime(response.started_on)).total_seconds()
+	if elapsed > limit * 60 + SUBMIT_GRACE_SECONDS:
+		frappe.log_error(
+			title=f"Assessment submitted over time: {response.name}",
+			message=(
+				f"Response {response.name} submitted after {int(elapsed)}s "
+				f"(limit {limit*60}s + {SUBMIT_GRACE_SECONDS}s grace). Accepted."
+			),
+		)
 
 
 def _resolve_result(percentage, template):

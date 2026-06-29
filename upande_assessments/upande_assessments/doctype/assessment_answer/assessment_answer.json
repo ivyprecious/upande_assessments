@@ -8,7 +8,8 @@
   "question",
   "question_text",
   "selected_option_text",
-  "score_awarded"
+  "score_awarded",
+  "is_red_flag"
  ],
  "fields": [
   {
@@ -35,6 +36,14 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Score Awarded"
+  },
+  {
+   "default": "0",
+   "description": "Snapshot: the option the candidate chose was marked as a red flag.",
+   "fieldname": "is_red_flag",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Red Flag"
   }
  ],
  "index_web_pages_for_search": 1,

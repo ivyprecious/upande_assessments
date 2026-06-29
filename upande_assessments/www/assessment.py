@@ -35,15 +35,23 @@ def get_context(context):
 		return context
 
 	context.state = data.get("state")
+	context.title = data.get("title")
+
+	# Both the Start and the Submit actions are guest POSTs that need a CSRF
+	# token, so mint one for the intro screen as well as the live assessment.
+	# Use get_csrf_token(): it reads session.data.csrf_token and generates +
+	# persists one if absent. frappe.session.csrf_token is always None.
+	if context.state in ("intro", "open"):
+		context.csrf_token = frappe.sessions.get_csrf_token()
+		context.applicant_name = data.get("applicant_name")
+		context.time_limit_minutes = data.get("time_limit_minutes")
+
+	if context.state == "intro":
+		context.instructions = data.get("instructions")
 
 	if context.state == "open":
-		context.title = data.get("title")
 		context.assessment_type = data.get("assessment_type")
-		context.applicant_name = data.get("applicant_name")
 		context.questions = data.get("questions")
-		# csrf token so the guest can POST back to submit_assessment.
-		# Use get_csrf_token(): it reads session.data.csrf_token and generates
-		# + persists one if absent. frappe.session.csrf_token is always None.
-		context.csrf_token = frappe.sessions.get_csrf_token()
+		context.remaining_seconds = data.get("remaining_seconds")
 
 	return context

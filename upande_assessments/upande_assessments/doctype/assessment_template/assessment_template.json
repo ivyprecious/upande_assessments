@@ -11,7 +11,11 @@
   "column_break_main",
   "designation",
   "pass_percentage",
-  "action_on_fail"
+  "action_on_fail",
+  "timing_section",
+  "instructions",
+  "time_limit_minutes",
+  "expiry_days"
  ],
  "fields": [
   {
@@ -63,6 +67,30 @@
    "fieldtype": "Select",
    "label": "Action on Fail",
    "options": "Flag for Review\nReject"
+  },
+  {
+   "fieldname": "timing_section",
+   "fieldtype": "Section Break",
+   "label": "Instructions & Timing"
+  },
+  {
+   "description": "Shown to the candidate on the pre-start screen and rendered into the invitation email.",
+   "fieldname": "instructions",
+   "fieldtype": "Text Editor",
+   "label": "Instructions"
+  },
+  {
+   "description": "How long the candidate has once they click Start. Leave 0 for no time limit.",
+   "fieldname": "time_limit_minutes",
+   "fieldtype": "Int",
+   "label": "Time Limit (minutes)"
+  },
+  {
+   "default": "7",
+   "description": "Days from send until the tokenised link expires.",
+   "fieldname": "expiry_days",
+   "fieldtype": "Int",
+   "label": "Expiry (days)"
   }
  ],
  "index_web_pages_for_search": 1,

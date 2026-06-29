@@ -7,7 +7,8 @@
  "field_order": [
   "option_text",
   "score",
-  "is_best"
+  "is_best",
+  "is_red_flag"
  ],
  "fields": [
   {
@@ -30,6 +31,14 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Is Best Answer"
+  },
+  {
+   "default": "0",
+   "description": "If a candidate picks this option the whole result is forced to Review, regardless of score.",
+   "fieldname": "is_red_flag",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Red Flag"
   }
  ],
  "index_web_pages_for_search": 1,

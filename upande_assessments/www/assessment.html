@@ -12,6 +12,13 @@
 	}
 	.asmt-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
 	.asmt-sub { color: #6c757d; margin: 0; font-size: 14px; }
+	.asmt-instructions { margin: 16px 0; line-height: 1.6; }
+	.asmt-instructions img { max-width: 100%; }
+	.asmt-timebox {
+		margin: 18px 0 4px; padding: 14px 16px; border-radius: 8px;
+		background: #fff8e6; border: 1px solid #ffe08a; font-size: 15px;
+		font-weight: 700; color: #7a5b00;
+	}
 	.asmt-q { font-weight: 600; margin: 0 0 14px; line-height: 1.4; }
 	.asmt-q .num { color: #2490ef; margin-right: 6px; }
 	.asmt-opt {
@@ -35,13 +42,62 @@
 	.asmt-state h2 { margin: 12px 0 6px; }
 	.asmt-state p { color: #6c757d; }
 	.asmt-progress { font-size: 13px; color: #6c757d; margin-top: 6px; }
+	/* Sticky countdown bar shown while the assessment is live. */
+	.asmt-timer {
+		position: sticky; top: 0; z-index: 10; margin: 0 0 18px;
+		background: #fff; border-radius: 12px; padding: 14px 20px;
+		box-shadow: 0 1px 3px rgba(0,0,0,.08);
+		display: flex; align-items: center; justify-content: space-between;
+		font-weight: 700;
+	}
+	.asmt-timer .clock { font-size: 22px; font-variant-numeric: tabular-nums; }
+	.asmt-timer.warn { background: #fff8e6; }
+	.asmt-timer.danger { background: #fde7e7; color: #b50000; }
 </style>
 {% endblock %}
 
 {% block page_content %}
 <div class="asmt-wrap">
 
-	{% if state == "open" %}
+	{% if state == "intro" %}
+	<div class="asmt-card">
+		<h1 class="asmt-title">{{ title }}</h1>
+		<p class="asmt-sub">
+			{% if applicant_name %}{{ applicant_name }} — {% endif %}
+			Please read the instructions below before you begin.
+		</p>
+
+		{% if instructions %}
+		<div class="asmt-instructions">{{ instructions | safe }}</div>
+		{% endif %}
+
+		<div class="asmt-timebox">
+			{% if time_limit_minutes %}
+			⏱ Once you click Start, you have {{ time_limit_minutes }} minutes.
+			The assessment submits automatically when time runs out.
+			{% else %}
+			⏱ There is no time limit on this assessment. Take your time, then submit.
+			{% endif %}
+		</div>
+
+		<p class="asmt-sub" style="margin-top:14px;">
+			You can submit only once. The questions are shown after you click Start.
+		</p>
+	</div>
+
+	<div class="asmt-actions">
+		<button type="button" class="asmt-btn" id="asmt-start">Start Assessment</button>
+		<div class="asmt-progress" id="asmt-start-progress"></div>
+	</div>
+
+	{% elif state == "open" %}
+	{% if remaining_seconds is not none %}
+	<div class="asmt-timer" id="asmt-timer" data-remaining="{{ remaining_seconds }}">
+		<span>Time remaining</span>
+		<span class="clock" id="asmt-clock">--:--</span>
+	</div>
+	{% endif %}
+
 	<div class="asmt-card">
 		<h1 class="asmt-title">{{ title }}</h1>
 		<p class="asmt-sub">
@@ -97,14 +153,51 @@
 {% block script %}
 <script>
 (function () {
+	var token = {{ token | tojson }};
+	var csrf = {{ (csrf_token or "") | tojson }};
+
+	// ----- Pre-start screen: stamp started_on server-side, then reload. -----
+	var startBtn = document.getElementById("asmt-start");
+	if (startBtn) {
+		var startProgress = document.getElementById("asmt-start-progress");
+		startBtn.addEventListener("click", function () {
+			startBtn.disabled = true;
+			startProgress.textContent = "Starting...";
+			fetch("/api/method/upande_assessments.api.start_assessment", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Frappe-CSRF-Token": csrf,
+				},
+				body: JSON.stringify({ token: token }),
+			})
+				.then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+				.then(function (res) {
+					if (res.ok && res.body.message && res.body.message.state) {
+						// Reload: get_assessment now sees started_on and renders the
+						// questions with the real server-seeded remaining time.
+						window.location.reload();
+					} else {
+						startProgress.textContent = "Could not start. Please try again.";
+						startBtn.disabled = false;
+					}
+				})
+				.catch(function () {
+					startProgress.textContent = "Network error. Please try again.";
+					startBtn.disabled = false;
+				});
+		});
+		return; // Nothing else on the intro screen.
+	}
+
+	// ----- Live assessment -----
 	var form = document.getElementById("asmt-form");
 	if (!form) return;
 
-	var token = {{ token | tojson }};
-	var csrf = {{ (csrf_token or "") | tojson }};
 	var submitBtn = document.getElementById("asmt-submit");
 	var progress = document.getElementById("asmt-progress");
 	var questions = Array.prototype.slice.call(document.querySelectorAll(".asmt-question"));
+	var submitting = false;
 
 	// Highlight the chosen option.
 	form.addEventListener("change", function (e) {
@@ -114,8 +207,8 @@
 		e.target.closest(".asmt-opt").classList.add("selected");
 	});
 
-	form.addEventListener("submit", function (e) {
-		e.preventDefault();
+	function doSubmit(skipConfirm) {
+		if (submitting) return;
 
 		var answers = [];
 		var unanswered = 0;
@@ -129,11 +222,12 @@
 			}
 		});
 
-		if (unanswered > 0) {
+		if (!skipConfirm && unanswered > 0) {
 			var ok = confirm(unanswered + " question(s) are unanswered. Submit anyway?");
 			if (!ok) return;
 		}
 
+		submitting = true;
 		submitBtn.disabled = true;
 		progress.textContent = "Submitting...";
 
@@ -150,15 +244,21 @@
 				if (res.ok && res.body.message && res.body.message.state === "submitted") {
 					renderDone();
 				} else {
-					var msg = (res.body && (res.body._server_messages || res.body.exc)) || "Submission failed.";
 					progress.textContent = "Could not submit. Please try again.";
 					submitBtn.disabled = false;
+					submitting = false;
 				}
 			})
 			.catch(function () {
 				progress.textContent = "Network error. Please try again.";
 				submitBtn.disabled = false;
+				submitting = false;
 			});
+	}
+
+	form.addEventListener("submit", function (e) {
+		e.preventDefault();
+		doSubmit(false);
 	});
 
 	function renderDone() {
@@ -170,6 +270,35 @@
 			'<p>Thank you for completing the assessment. You may close this page.</p>' +
 			"</div>";
 		window.scrollTo(0, 0);
+	}
+
+	// ----- Countdown, seeded from the server's remaining time. -----
+	var timerEl = document.getElementById("asmt-timer");
+	if (timerEl) {
+		var remaining = parseInt(timerEl.getAttribute("data-remaining"), 10);
+		var clock = document.getElementById("asmt-clock");
+
+		function render() {
+			var m = Math.floor(remaining / 60);
+			var s = remaining % 60;
+			clock.textContent = m + ":" + (s < 10 ? "0" + s : s);
+			timerEl.classList.toggle("warn", remaining <= 120 && remaining > 30);
+			timerEl.classList.toggle("danger", remaining <= 30);
+		}
+
+		function tick() {
+			if (remaining <= 0) {
+				clock.textContent = "0:00";
+				progress.textContent = "Time is up. Submitting your answers...";
+				doSubmit(true); // auto-submit whatever has been answered
+				return;
+			}
+			render();
+			remaining--;
+			setTimeout(tick, 1000);
+		}
+
+		tick();
 	}
 })();
 </script>
