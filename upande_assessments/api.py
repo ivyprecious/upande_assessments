@@ -145,7 +145,7 @@ def send_assessment(applicant, assessment_type="Personality", resend=0):
 # HR-triggered: bulk dispatch from the Job Applicant list view
 # ---------------------------------------------------------------------------
 # Above this many applicants we run the loop in a background job so the web
-# request doesn't time out; HR is emailed the summary on completion.
+# request doesn't time out.
 BULK_INLINE_THRESHOLD = 30
 
 # An applicant already holding a response in one of these states must not be
@@ -164,7 +164,7 @@ def bulk_send_assessment(applicants, assessment_type="Personality"):
 	never silently dropped.
 
 	Small batches run inline and return the summary. Batches larger than
-	``BULK_INLINE_THRESHOLD`` are enqueued and HR is emailed on completion.
+	``BULK_INLINE_THRESHOLD`` are enqueued and run in the background.
 	"""
 	# HR-only. The per-applicant button checks write permission on a single doc;
 	# the list action runs without one, so we check at the doctype level.
@@ -185,7 +185,6 @@ def bulk_send_assessment(applicants, assessment_type="Personality"):
 			timeout=1500,
 			applicants=applicants,
 			assessment_type=assessment_type,
-			notify_user=frappe.session.user,
 		)
 		return {"queued": True, "count": len(applicants)}
 
@@ -215,11 +214,10 @@ def send_to_all_passed(job_opening, assessment_type="Personality"):
 	return bulk_send_assessment(applicants, assessment_type=assessment_type)
 
 
-def _run_bulk_send(applicants, assessment_type="Personality", notify_user=None):
+def _run_bulk_send(applicants, assessment_type="Personality"):
 	"""Walk the selection, applying the eligibility gate to each applicant.
 
-	Returns a summary dict. ``notify_user`` is set only on the background path,
-	where there is no caller waiting on the return value, so we email it instead.
+	Returns a summary dict.
 	"""
 	summary = {
 		"sent": [],
@@ -252,15 +250,10 @@ def _run_bulk_send(applicants, assessment_type="Personality", notify_user=None):
 			continue
 
 		# Eligible: dispatch via the shared single-applicant path. One bad record
-		# (e.g. a missing email) must not abort the rest of the batch.
+		# must not abort the rest of the batch.
 		try:
-			res = send_assessment(applicant, assessment_type=assessment_type)
-			# Personality is delivered by email; if nothing was sent the applicant
-			# has no address. Report it as a failure so HR can fix and resend.
-			if assessment_type == "Personality" and not res.get("emailed"):
-				summary["failed"].append({"applicant": label, "reason": _("No email address")})
-			else:
-				summary["sent"].append(label)
+			send_assessment(applicant, assessment_type=assessment_type)
+			summary["sent"].append(label)
 		except Exception as e:
 			frappe.log_error(
 				title=f"bulk_send_assessment failed for {applicant}",
@@ -268,47 +261,7 @@ def _run_bulk_send(applicants, assessment_type="Personality", notify_user=None):
 			)
 			summary["failed"].append({"applicant": label, "reason": str(e)})
 
-	if notify_user:
-		_notify_bulk_complete(notify_user, summary)
-
 	return summary
-
-
-def _notify_bulk_complete(user, summary):
-	"""Email the HR user who triggered a background bulk send its outcome."""
-	recipient = frappe.db.get_value("User", user, "email") or user
-	if not recipient or recipient in ("Administrator", "Guest"):
-		return
-
-	failed_lines = "".join(
-		f"<li>{f['applicant']} — {f['reason']}</li>" for f in summary["failed"]
-	)
-	message = _(
-		"<p>The bulk assessment send has finished.</p>"
-		"<ul>"
-		"<li><b>Sent:</b> {sent}</li>"
-		"<li><b>Skipped (already sent):</b> {already}</li>"
-		"<li><b>Skipped (not passed):</b> {not_passed}</li>"
-		"<li><b>Failed:</b> {failed}</li>"
-		"</ul>"
-	).format(
-		sent=len(summary["sent"]),
-		already=len(summary["skipped_already_sent"]),
-		not_passed=len(summary["skipped_not_passed"]),
-		failed=len(summary["failed"]),
-	)
-	if failed_lines:
-		message += _("<p>Failed applicants (please check their email address):</p><ul>{0}</ul>").format(
-			failed_lines
-		)
-
-	frappe.sendmail(
-		recipients=[recipient],
-		subject=_("Bulk assessment send complete — {0} sent, {1} failed").format(
-			len(summary["sent"]), len(summary["failed"])
-		),
-		message=message,
-	)
 
 
 def _assessment_link(token):
@@ -637,21 +590,6 @@ def _update_applicant(applicant, result, percentage):
 			"custom_assessment_score": percentage,
 		},
 	)
-
-
-def _hr_recipients():
-	users = frappe.get_all(
-		"Has Role",
-		filters={"role": "Group HR Manager", "parenttype": "User"},
-		pluck="parent",
-	)
-	emails = [
-		u
-		for u in users
-		if u not in ("Administrator", "Guest")
-		and frappe.db.get_value("User", u, "enabled")
-	]
-	return list(set(emails))
 
 
 # ---------------------------------------------------------------------------

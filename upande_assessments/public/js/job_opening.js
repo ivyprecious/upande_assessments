@@ -50,13 +50,13 @@ function show_bulk_summary(msg) {
 		return;
 	}
 
-	// Large batches run in the background; HR is emailed the outcome.
+	// Large batches run in the background.
 	if (msg.queued) {
 		frappe.msgprint({
 			title: __("Queued"),
 			indicator: "blue",
 			message: __(
-				"Sending {0} assessments in the background. You'll be emailed the summary when it finishes.",
+				"Sending {0} assessments in the background. This may take a few minutes to finish.",
 				[msg.count]
 			),
 		});
