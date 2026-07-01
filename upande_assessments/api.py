@@ -539,7 +539,7 @@ def submit_assessment(token, answers):
 	doc.completed_on = now_datetime()
 	doc.save(ignore_permissions=True)
 
-	_update_applicant(response.job_applicant, result, percentage)
+	_update_applicant(response.job_applicant, result, percentage, response.assessment_type)
 
 	frappe.db.commit()
 	return {"state": "submitted"}
@@ -579,16 +579,38 @@ def _resolve_result(percentage, template):
 	return "Fail" if template.action_on_fail == "Reject" else "Review"
 
 
-def _update_applicant(applicant, result, percentage):
-	"""Write only this app's custom fields. Never the core Job Applicant status."""
+def _update_applicant(applicant, result, percentage, assessment_type=None):
+	"""Write only this app's custom fields. Never the core Job Applicant status.
+
+	Routes the result to the type-specific pair (Psychometric / Technical) and
+	always mirrors it to the generic pair as the latest result, which powers the
+	Job Applicant list-view column.
+	"""
 	status_map = {"Pass": "Passed", "Fail": "Failed", "Review": "Review"}
+	status = status_map.get(result, "Completed")
+
+	# Generic fields always reflect the latest completed assessment.
+	values = {
+		"custom_assessment_status": status,
+		"custom_assessment_score": percentage,
+	}
+
+	# Route to the type-specific pair; unknown types write only the generic fields.
+	type_fields = {
+		"Psychometric": ("custom_psychometric_status", "custom_psychometric_score"),
+		"Technical": ("custom_technical_status", "custom_technical_score"),
+	}
+	pair = type_fields.get(assessment_type)
+	if pair:
+		status_field, score_field = pair
+		values[status_field] = status
+		values[score_field] = percentage
+
 	frappe.db.set_value(
 		"Job Applicant",
 		applicant,
-		{
-			"custom_assessment_status": status_map.get(result, "Completed"),
-			"custom_assessment_score": percentage,
-		},
+		values,
+		update_modified=False,
 	)
 
 

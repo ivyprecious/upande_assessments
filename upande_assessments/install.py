@@ -34,6 +34,57 @@ JOB_APPLICANT_CUSTOM_FIELDS = {
 			"read_only": 1,
 			"allow_on_submit": 1,
 		},
+		# Psychometric-specific result, kept distinct from the generic latest-result
+		# fields above so HR can see both assessment types side by side.
+		{
+			"fieldname": "custom_psychometric_column",
+			"label": "Psychometric Assessment",
+			"fieldtype": "Column Break",
+			"insert_after": "custom_assessment_score",
+		},
+		{
+			"fieldname": "custom_psychometric_status",
+			"label": "Psychometric Status",
+			"fieldtype": "Select",
+			"options": "Not Sent\nSent\nCompleted\nPassed\nFailed\nReview",
+			"default": "Not Sent",
+			"insert_after": "custom_psychometric_column",
+			"read_only": 1,
+			"allow_on_submit": 1,
+		},
+		{
+			"fieldname": "custom_psychometric_score",
+			"label": "Psychometric Score (%)",
+			"fieldtype": "Float",
+			"insert_after": "custom_psychometric_status",
+			"read_only": 1,
+			"allow_on_submit": 1,
+		},
+		# Technical-specific result.
+		{
+			"fieldname": "custom_technical_column",
+			"label": "Technical Assessment",
+			"fieldtype": "Column Break",
+			"insert_after": "custom_psychometric_score",
+		},
+		{
+			"fieldname": "custom_technical_status",
+			"label": "Technical Status",
+			"fieldtype": "Select",
+			"options": "Not Sent\nSent\nCompleted\nPassed\nFailed\nReview",
+			"default": "Not Sent",
+			"insert_after": "custom_technical_column",
+			"read_only": 1,
+			"allow_on_submit": 1,
+		},
+		{
+			"fieldname": "custom_technical_score",
+			"label": "Technical Score (%)",
+			"fieldtype": "Float",
+			"insert_after": "custom_technical_status",
+			"read_only": 1,
+			"allow_on_submit": 1,
+		},
 	]
 }
 
