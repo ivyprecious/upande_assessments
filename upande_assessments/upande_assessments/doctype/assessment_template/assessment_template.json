@@ -27,13 +27,13 @@
    "unique": 1
   },
   {
-   "default": "Personality",
+   "default": "Psychometric",
    "fieldname": "assessment_type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Assessment Type",
-   "options": "\nPersonality\nTechnical",
+   "options": "\nPsychometric\nTechnical",
    "reqd": 1
   },
   {

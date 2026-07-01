@@ -49,7 +49,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Assessment Type",
-   "options": "Personality\nTechnical",
+   "options": "Psychometric\nTechnical",
    "read_only": 1
   },
   {

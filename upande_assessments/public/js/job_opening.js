@@ -1,6 +1,6 @@
 // Upande Assessments — Job Opening client script.
 //
-// Adds a "Send to All Passed" button so HR can dispatch the Personality
+// Adds a "Send to All Passed" button so HR can dispatch the Psychometric
 // assessment to every applicant on this opening who passed ATS screening,
 // without hand-selecting in the list view. Thin wrapper over the same
 // bulk_send_assessment path — eligibility (passed + not already sent) is
@@ -18,7 +18,7 @@ frappe.ui.form.on("Job Opening", {
 			() => {
 				frappe.confirm(
 					__(
-						"Send the Personality assessment to every applicant on this opening who passed ATS screening (skipping anyone already sent to)?"
+						"Send the Psychometric assessment to every applicant on this opening who passed ATS screening (skipping anyone already sent to)?"
 					),
 					() => send_to_all_passed(frm)
 				);
@@ -79,7 +79,7 @@ function show_bulk_summary(msg) {
 	}
 
 	frappe.msgprint({
-		title: __("Send Personality Assessment"),
+		title: __("Send Psychometric Assessment"),
 		indicator: msg.failed.length ? "orange" : "green",
 		message: message,
 	});

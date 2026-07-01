@@ -15,11 +15,11 @@ frappe.ui.form.on("Job Applicant", {
 
 		if (passed_ats) {
 			const label = sent
-				? __("Resend Personality Assessment")
-				: __("Send Personality Assessment");
+				? __("Resend Psychometric Assessment")
+				: __("Send Psychometric Assessment");
 			frm.add_custom_button(
 				label,
-				() => send_assessment(frm, "Personality", sent),
+				() => send_assessment(frm, "Psychometric", sent),
 				__("Assessment")
 			);
 		}
