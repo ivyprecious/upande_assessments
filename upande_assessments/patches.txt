@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 upande_assessments.patches.rename_personality_to_psychometric
 upande_assessments.patches.rename_psychometric_to_personality
+upande_assessments.patches.restore_talent_pool_report
