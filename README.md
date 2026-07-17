@@ -1,7 +1,7 @@
 ## Upande Assessments
 
 A standalone Frappe app for candidate assessments — a reusable, template-driven
-assessment engine. **Phase 1** ships a Psychometric / Situational Judgment Test
+assessment engine. **Phase 1** ships a Personality / Situational Judgment Test
 (SJT); the engine is `assessment_type`-aware so a **Technical** assessment runs
 the same flow (kiosk UI deferred to Phase 2).
 
@@ -20,7 +20,7 @@ HR builds templates, questions, options and per-option scores entirely in Desk.
 
 ### Flow
 
-1. On a Job Applicant who passed ATS screening, HR clicks **Send Psychometric Assessment**.
+1. On a Job Applicant who passed ATS screening, HR clicks **Send Personality Assessment**.
 2. `send_assessment` picks the active template (Job Opening override → Designation → global default), creates a Response with a single-use token + expiry, and emails the tokenised link (Technical returns the link for a kiosk).
 3. The applicant opens the link as a **guest** (no login), answers, and submits.
 4. `submit_assessment` scores **server-side** from each option's `score`, snapshots the chosen text, computes the result against the pass mark + `action_on_fail`, updates `custom_assessment_*` on the applicant, and notifies HR.
@@ -31,7 +31,7 @@ Correct answers and per-option scores never leave the server: the guest
 ### Server logic
 
 `upande_assessments/api.py`:
-- `send_assessment(applicant, assessment_type="Psychometric", resend=0)` — HR only.
+- `send_assessment(applicant, assessment_type="Personality", resend=0)` — HR only.
 - `get_assessment(token)` — guest; render-only payload, no answer keys.
 - `submit_assessment(token, answers)` — guest; idempotent, scores server-side.
 

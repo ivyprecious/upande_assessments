@@ -61,10 +61,10 @@ def pick_template(applicant_doc, assessment_type):
 # HR-triggered: create + dispatch an assessment
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
-def send_assessment(applicant, assessment_type="Psychometric", resend=0):
+def send_assessment(applicant, assessment_type="Personality", resend=0):
 	"""Create an Assessment Response and dispatch the tokenised link.
 
-	Psychometric -> emailed to the applicant.
+	Personality -> emailed to the applicant.
 	Technical    -> link returned to HR for the kiosk machine.
 	"""
 	# Only users who can edit the applicant (HR roles) may dispatch assessments.
@@ -128,7 +128,7 @@ def send_assessment(applicant, assessment_type="Psychometric", resend=0):
 	link = _assessment_link(response.token)
 
 	emailed = False
-	if assessment_type == "Psychometric":
+	if assessment_type == "Personality":
 		emailed = _email_invite(applicant_doc, response, link, template_doc)
 
 	frappe.db.commit()
@@ -155,8 +155,8 @@ _ACTIVE_RESPONSE_STATES = ["Sent", "In Progress", "Completed"]
 
 
 @frappe.whitelist()
-def bulk_send_assessment(applicants, assessment_type="Psychometric"):
-	"""Send a Psychometric assessment to every eligible applicant in a selection.
+def bulk_send_assessment(applicants, assessment_type="Personality"):
+	"""Send a Personality assessment to every eligible applicant in a selection.
 
 	The list-view selection is never trusted: the eligibility gate (passed ATS,
 	not already sent) is re-applied server-side for each name. Eligible ones go
@@ -192,7 +192,7 @@ def bulk_send_assessment(applicants, assessment_type="Psychometric"):
 
 
 @frappe.whitelist()
-def send_to_all_passed(job_opening, assessment_type="Psychometric"):
+def send_to_all_passed(job_opening, assessment_type="Personality"):
 	"""Send to every applicant on a Job Opening who passed ATS screening.
 
 	Convenience wrapper over ``bulk_send_assessment`` for HR who always send per
@@ -214,7 +214,7 @@ def send_to_all_passed(job_opening, assessment_type="Psychometric"):
 	return bulk_send_assessment(applicants, assessment_type=assessment_type)
 
 
-def _run_bulk_send(applicants, assessment_type="Psychometric"):
+def _run_bulk_send(applicants, assessment_type="Personality"):
 	"""Walk the selection, applying the eligibility gate to each applicant.
 
 	Returns a summary dict.
@@ -582,7 +582,7 @@ def _resolve_result(percentage, template):
 def _update_applicant(applicant, result, percentage, assessment_type=None):
 	"""Write only this app's custom fields. Never the core Job Applicant status.
 
-	Routes the result to the type-specific pair (Psychometric / Technical) and
+	Routes the result to the type-specific pair (Personality / Technical) and
 	always mirrors it to the generic pair as the latest result, which powers the
 	Job Applicant list-view column.
 	"""
@@ -597,7 +597,7 @@ def _update_applicant(applicant, result, percentage, assessment_type=None):
 
 	# Route to the type-specific pair; unknown types write only the generic fields.
 	type_fields = {
-		"Psychometric": ("custom_psychometric_status", "custom_psychometric_score"),
+		"Personality": ("custom_psychometric_status", "custom_psychometric_score"),
 		"Technical": ("custom_technical_status", "custom_technical_score"),
 	}
 	pair = type_fields.get(assessment_type)

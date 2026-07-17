@@ -34,17 +34,17 @@ JOB_APPLICANT_CUSTOM_FIELDS = {
 			"read_only": 1,
 			"allow_on_submit": 1,
 		},
-		# Psychometric-specific result, kept distinct from the generic latest-result
+		# Personality-specific result, kept distinct from the generic latest-result
 		# fields above so HR can see both assessment types side by side.
 		{
 			"fieldname": "custom_psychometric_column",
-			"label": "Psychometric Assessment",
+			"label": "Personality Assessment",
 			"fieldtype": "Column Break",
 			"insert_after": "custom_assessment_score",
 		},
 		{
 			"fieldname": "custom_psychometric_status",
-			"label": "Psychometric Status",
+			"label": "Personality Status",
 			"fieldtype": "Select",
 			"options": "Not Sent\nSent\nCompleted\nPassed\nFailed\nReview",
 			"default": "Not Sent",
@@ -54,7 +54,7 @@ JOB_APPLICANT_CUSTOM_FIELDS = {
 		},
 		{
 			"fieldname": "custom_psychometric_score",
-			"label": "Psychometric Score (%)",
+			"label": "Personality Score (%)",
 			"fieldtype": "Float",
 			"insert_after": "custom_psychometric_status",
 			"read_only": 1,

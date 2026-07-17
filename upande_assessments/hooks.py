@@ -268,7 +268,7 @@ doctype_js = {
 	"Job Opening": "public/js/job_opening.js",
 }
 
-# Bulk "Send Psychometric Assessment" action on the Job Applicant list view.
+# Bulk "Send Personality Assessment" action on the Job Applicant list view.
 # Coexists with upande_ats's own list JS — Frappe loads both files; ours chains
 # the existing onload rather than overwriting it.
 doctype_list_js = {"Job Applicant": "public/js/job_applicant_list.js"}

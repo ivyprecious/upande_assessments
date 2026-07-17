@@ -1,6 +1,6 @@
 // Upande Assessments — Job Applicant list view.
 //
-// Adds a bulk "Send Psychometric Assessment" action for HR: filter the list to a
+// Adds a bulk "Send Personality Assessment" action for HR: filter the list to a
 // Job Opening + ats_result = Pass, select the rows, then Actions → Send.
 //
 // Coexists with upande_ats's own Job Applicant list settings. upande_ats sets
@@ -10,7 +10,7 @@ frappe.listview_settings["Job Applicant"] = frappe.listview_settings["Job Applic
 const _prev = frappe.listview_settings["Job Applicant"].onload;
 frappe.listview_settings["Job Applicant"].onload = function (lv) {
 	if (_prev) _prev(lv);
-	lv.page.add_action_item(__("Send Psychometric Assessment"), () => {
+	lv.page.add_action_item(__("Send Personality Assessment"), () => {
 		const items = lv.get_checked_items();
 		if (!items.length) {
 			frappe.msgprint(__("Select at least one applicant."));
@@ -58,7 +58,7 @@ function show_bulk_summary(msg) {
 	}
 
 	frappe.msgprint({
-		title: __("Send Psychometric Assessment"),
+		title: __("Send Personality Assessment"),
 		indicator: msg.failed.length ? "orange" : "green",
 		message: message,
 	});
